@@ -1,0 +1,271 @@
+<style>
+  .ctrl {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 8px 0;
+    font-size: 13px;
+    color: var(--color-text-secondary);
+  }
+  .ctrl label {
+    min-width: 90px;
+  }
+  .ctrl input[type="range"] {
+    flex: 1;
+  }
+  .ctrl span {
+    min-width: 36px;
+    text-align: right;
+    font-weight: 500;
+    color: var(--color-text-primary);
+  }
+  #info-row {
+    display: flex;
+    gap: 12px;
+    margin: 12px 0;
+    flex-wrap: wrap;
+  }
+  .stat {
+    background: var(--color-background-secondary);
+    border-radius: var(--border-radius-md);
+    padding: 10px 14px;
+    flex: 1;
+    min-width: 110px;
+  }
+  .stat .label {
+    font-size: 11px;
+    color: var(--color-text-secondary);
+    margin-bottom: 4px;
+  }
+  .stat .val {
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--color-text-primary);
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    border-radius: var(--border-radius-md);
+    border: 0.5px solid var(--color-border-tertiary);
+  }
+</style>
+
+<canvas id="cv" height="200"></canvas>
+
+<div id="info-row">
+  <div class="stat">
+    <div class="label">Sample rate</div>
+    <div class="val" id="sr-val">48 000 Hz</div>
+  </div>
+  <div class="stat">
+    <div class="label">Highlighted sample value</div>
+    <div class="val" id="amp-val">—</div>
+  </div>
+  <div class="stat">
+    <div class="label">Time of that sample</div>
+    <div class="val" id="t-val">—</div>
+  </div>
+  <div class="stat">
+    <div class="label">What it means</div>
+    <div class="val" id="meaning-val" style="font-size: 13px">hover a dot</div>
+  </div>
+</div>
+
+<div class="ctrl">
+  <label>Frequency (Hz)</label
+  ><input type="range" min="1" max="12" value="3" step="1" id="freq" /><span
+    id="freq-out"
+    >3</span
+  >
+</div>
+<div class="ctrl">
+  <label>Amplitude</label
+  ><input type="range" min="10" max="100" value="70" step="1" id="amp" /><span
+    id="amp-out"
+    >0.70</span
+  >
+</div>
+<div class="ctrl">
+  <label>Samples shown</label
+  ><input type="range" min="20" max="120" value="48" step="4" id="nsamp" /><span
+    id="ns-out"
+    >48</span
+  >
+</div>
+
+<p style="font-size: 12px; color: var(--color-text-secondary); margin: 8px 0 0">
+  Hover any dot — that is one sample: a single number the microphone recorded at
+  that instant.
+</p>
+
+<script>
+  const cv = document.getElementById("cv");
+  const ctx = cv.getContext("2d");
+  const W = () => cv.offsetWidth;
+  const H = 200;
+
+  let hovered = -1;
+
+  function getColors() {
+    const s = getComputedStyle(document.documentElement);
+    return {
+      line: s.getPropertyValue("--color-border-primary") || "#888",
+      dot: "#1D9E75",
+      dotHov: "#D85A30",
+      zero: s.getPropertyValue("--color-border-tertiary") || "#ccc",
+      text: s.getPropertyValue("--color-text-secondary") || "#666",
+      bg: s.getPropertyValue("--color-background-primary") || "#fff",
+      wave: "#378ADD",
+    };
+  }
+
+  function draw() {
+    const freq = +document.getElementById("freq").value;
+    const ampPct = +document.getElementById("amp").value / 100;
+    const N = +document.getElementById("nsamp").value;
+    const w = (cv.width = cv.offsetWidth);
+    cv.height = H;
+    const c = getColors();
+
+    const midY = H / 2;
+    const yScale = (H / 2 - 24) * ampPct;
+
+    ctx.clearRect(0, 0, w, H);
+
+    ctx.strokeStyle = c.zero;
+    ctx.lineWidth = 0.5;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(0, midY);
+    ctx.lineTo(w, midY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = c.text;
+    ctx.font = "11px sans-serif";
+    ctx.fillText("+1.0  (max pressure)", 6, 14);
+    ctx.fillText("0.0  (silence)", 6, midY - 4);
+    ctx.fillText("-1.0  (min pressure)", 6, H - 4);
+
+    const xs = [],
+      ys = [];
+    for (let i = 0; i < N; i++) {
+      const t = i / N;
+      const x = (i / (N - 1)) * w;
+      const y = midY - Math.sin(2 * Math.PI * freq * t) * yScale;
+      xs.push(x);
+      ys.push(y);
+    }
+
+    ctx.strokeStyle = c.wave;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let i = 0; i < N; i++) {
+      i === 0 ? ctx.moveTo(xs[i], ys[i]) : ctx.lineTo(xs[i], ys[i]);
+    }
+    ctx.stroke();
+
+    for (let i = 0; i < N; i++) {
+      const isHov = i === hovered;
+      ctx.beginPath();
+      ctx.arc(xs[i], ys[i], isHov ? 6 : 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = isHov ? c.dotHov : c.dot;
+      ctx.fill();
+    }
+
+    if (hovered >= 0) {
+      const x = xs[hovered],
+        y = ys[hovered];
+      const val = (midY - y) / yScale;
+      ctx.strokeStyle = c.dotHov;
+      ctx.lineWidth = 0.8;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x, midY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = c.dotHov;
+      ctx.font = "11px sans-serif";
+      const label = val.toFixed(3);
+      const lx = x + 8 > w - 50 ? x - 46 : x + 8;
+      ctx.fillText(label, lx, y - 6);
+    }
+  }
+
+  cv.addEventListener("mousemove", (e) => {
+    const N = +document.getElementById("nsamp").value;
+    const rect = cv.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) * (cv.width / rect.width);
+    const ampPct = +document.getElementById("amp").value / 100;
+    const freq = +document.getElementById("freq").value;
+    const yScale = (H / 2 - 24) * ampPct;
+    const midY = H / 2;
+
+    let best = -1,
+      bd = 999;
+    for (let i = 0; i < N; i++) {
+      const x = (i / (N - 1)) * cv.width;
+      const t = i / N;
+      const y = midY - Math.sin(2 * Math.PI * freq * t) * yScale;
+      const my = (e.clientY - rect.top) * (cv.height / rect.height);
+      const d = Math.hypot(mx - x, my - y);
+      if (d < bd) {
+        bd = d;
+        best = i;
+      }
+    }
+    hovered = bd < 20 ? best : -1;
+
+    if (hovered >= 0) {
+      const t = hovered / N;
+      const val = Math.sin(2 * Math.PI * freq * t) * ampPct;
+      const sr = 48000;
+      const timeSec = (hovered / N) * ((N / sr) * N);
+      document.getElementById("amp-val").textContent = val.toFixed(4);
+      document.getElementById("t-val").textContent = "sample #" + hovered;
+      const pct = Math.abs(val);
+      const desc =
+        pct < 0.05
+          ? "near silence"
+          : pct < 0.3
+            ? "quiet"
+            : pct < 0.7
+              ? "moderate"
+              : "loud";
+      document.getElementById("meaning-val").textContent =
+        val > 0
+          ? "▲ push (compression)"
+          : val < -0.02
+            ? "▼ pull (rarefaction)"
+            : "— silence";
+    } else {
+      document.getElementById("amp-val").textContent = "—";
+      document.getElementById("t-val").textContent = "—";
+      document.getElementById("meaning-val").textContent = "hover a dot";
+    }
+    draw();
+  });
+
+  cv.addEventListener("mouseleave", () => {
+    hovered = -1;
+    draw();
+  });
+
+  ["freq", "amp", "nsamp"].forEach((id) => {
+    document.getElementById(id).addEventListener("input", () => {
+      document.getElementById("freq-out").textContent =
+        document.getElementById("freq").value;
+      document.getElementById("amp-out").textContent = (
+        +document.getElementById("amp").value / 100
+      ).toFixed(2);
+      document.getElementById("ns-out").textContent =
+        document.getElementById("nsamp").value;
+      draw();
+    });
+  });
+
+  draw();
+  window.addEventListener("resize", draw);
+</script>
