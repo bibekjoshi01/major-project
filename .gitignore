@@ -55,3 +55,4 @@ cover/
 .idea/
 
 .DS_Store
+data/asvspoof5/manifests/*.jsonl
