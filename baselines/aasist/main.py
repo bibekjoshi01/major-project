@@ -1,10 +1,6 @@
 """
 Main script that trains, validates, and evaluates
 various models including AASIST.
-
-AASIST
-Copyright (c) 2021-present NAVER Corp.
-MIT license
 """
 
 import argparse
@@ -24,8 +20,13 @@ from torch.utils.tensorboard import SummaryWriter
 from torchcontrib.optim import SWA
 
 from data_utils import TrainDataset, TestDataset, genSpoof_list
-from eval.calculate_metrics import calculate_minDCF_EER_CLLR, calculate_aDCF_tdcf_tEER
-from baselines.aasist.data_utils import create_optimizer, seed_worker, set_seed, str_to_bool
+from .eval.calc_matrix import calculate_minDCF_EER_CLLR, calculate_aDCF_tdcf_tEER
+from baselines.aasist.data_utils import (
+    create_optimizer,
+    seed_worker,
+    set_seed,
+    str_to_bool,
+)
 
 warnings.filterwarnings("ignore", category=FutureWarning)
 from tqdm import tqdm
@@ -277,6 +278,7 @@ def train_epoch(
     # set objective (Loss) functions
     weight = torch.FloatTensor([0.1, 0.9]).to(device)
     criterion = nn.CrossEntropyLoss(weight=weight)
+
     for batch_x, batch_y in tqdm(trn_loader):
         batch_size = batch_x.size(0)
         num_total += batch_size

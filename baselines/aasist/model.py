@@ -1,8 +1,4 @@
-"""
-AASIST
-Copyright (c) 2021-present NAVER Corp.
-MIT license
-"""
+"""AASIST Model Baseline"""
 
 import random
 from typing import Union
@@ -420,13 +416,14 @@ class CONV(nn.Module):
         )
 
 
-class Residual_block(nn.Module):
+class ResidualBlock(nn.Module):
     def __init__(self, nb_filts, first=False):
         super().__init__()
         self.first = first
 
         if not self.first:
             self.bn1 = nn.BatchNorm2d(num_features=nb_filts[0])
+
         self.conv1 = nn.Conv2d(
             in_channels=nb_filts[0],
             out_channels=nb_filts[1],
@@ -468,12 +465,10 @@ class Residual_block(nn.Module):
             out = x
         out = self.conv1(x)
 
-        # print('out',out.shape)
         out = self.bn2(out)
         out = self.selu(out)
-        # print('out',out.shape)
         out = self.conv2(out)
-        # print('conv2 out',out.shape)
+
         if self.downsample:
             identity = self.conv_downsample(identity)
 
@@ -502,15 +497,16 @@ class Model(nn.Module):
         self.selu = nn.SELU(inplace=True)
 
         self.encoder = nn.Sequential(
-            nn.Sequential(Residual_block(nb_filts=filts[1], first=True)),
-            nn.Sequential(Residual_block(nb_filts=filts[2])),
-            nn.Sequential(Residual_block(nb_filts=filts[3])),
-            nn.Sequential(Residual_block(nb_filts=filts[4])),
-            nn.Sequential(Residual_block(nb_filts=filts[4])),
-            nn.Sequential(Residual_block(nb_filts=filts[4])),
+            nn.Sequential(ResidualBlock(nb_filts=filts[1], first=True)),
+            nn.Sequential(ResidualBlock(nb_filts=filts[2])),
+            nn.Sequential(ResidualBlock(nb_filts=filts[3])),
+            nn.Sequential(ResidualBlock(nb_filts=filts[4])),
+            nn.Sequential(ResidualBlock(nb_filts=filts[4])),
+            nn.Sequential(ResidualBlock(nb_filts=filts[4])),
         )
 
         self.pos_S = nn.Parameter(torch.randn(1, 23, filts[-1][-1]))
+
         self.master1 = nn.Parameter(torch.randn(1, 1, gat_dims[0]))
         self.master2 = nn.Parameter(torch.randn(1, 1, gat_dims[0]))
 
@@ -531,13 +527,13 @@ class Model(nn.Module):
         self.HtrgGAT_layer_ST21 = HtrgGraphAttentionLayer(
             gat_dims[0], gat_dims[1], temperature=temperatures[2]
         )
-
         self.HtrgGAT_layer_ST22 = HtrgGraphAttentionLayer(
             gat_dims[1], gat_dims[1], temperature=temperatures[2]
         )
 
         self.pool_S = GraphPool(pool_ratios[0], gat_dims[0], 0.3)
         self.pool_T = GraphPool(pool_ratios[1], gat_dims[0], 0.3)
+
         self.pool_hS1 = GraphPool(pool_ratios[2], gat_dims[1], 0.3)
         self.pool_hT1 = GraphPool(pool_ratios[2], gat_dims[1], 0.3)
 
@@ -547,7 +543,6 @@ class Model(nn.Module):
         self.out_layer = nn.Linear(5 * gat_dims[1], 2)
 
     def forward(self, x, Freq_aug=False):
-
         x = x.unsqueeze(1)
         x = self.conv_time(x, mask=Freq_aug)
         x = x.unsqueeze(dim=1)
