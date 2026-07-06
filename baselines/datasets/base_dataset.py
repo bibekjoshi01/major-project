@@ -8,7 +8,7 @@ from baselines.datasets.rtc_augment import RTCAudioSimulator
 
 
 class DatasetBase(Dataset):
-    def __init__(self, manifest_path, base_data_dir, max_len=64000, is_training=True):
+    def __init__(self, manifest_path, base_data_dir, max_len=16000, is_training=True):
         """
         Step 1: Manifest Parsing & Verification Layout
 
@@ -72,34 +72,35 @@ class DatasetBase(Dataset):
             waveform_repeated = waveform.repeat(1, repeats)
             return waveform_repeated[:, : self.max_len]
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx, remove_channel=True):
         file_path = self.file_paths[idx]
         label = self.labels[idx]
 
         # 1. Load audio
         waveform, sr = torchaudio.load(file_path)
 
-        # 2. Convert to mono FIRST 
-        if waveform.shape[0] > 1:
-            waveform = waveform.mean(dim=0, keepdim=True)
-
-        # 3. Remove channel ONLY if your models expect [T]
-        waveform = waveform.squeeze(0)
-
-        # 4. Pad / truncate
-        waveform_fixed = self._pad_or_truncate(waveform)
-
-        # 5. Augmentation 
+        # 2. Augmentation
         waveform_rtc = self.rtc_simulator.process(
-            waveform_fixed, is_training=self.is_training
+            waveform, is_training=self.is_training
         )
 
-        # 6. FINAL SHAPE 
-        waveform_rtc = waveform_rtc.squeeze()
-        assert waveform_rtc.dim() == 1, f"Expected [T], got {waveform_rtc.shape}"
+        # 3. Convert to mono FIRST # TODO: Understand this
+        if waveform_rtc.shape[0] > 1:
+            waveform_rtc = waveform_rtc.mean(dim=0, keepdim=True)
+
+        # 4. Pad / truncate
+        waveform_fixed = self._pad_or_truncate(waveform_rtc)
+
+        # 5. Remove channel ONLY if your models expect [T]
+        if remove_channel:
+            waveform_fixed = waveform_fixed.squeeze(0)
+
+        # 6. FINAL SHAPE
+        waveform_fixed = waveform_fixed.squeeze()
+        assert waveform_fixed.dim() == 1, f"Expected [T], got {waveform_fixed.shape}"
 
         return {
-            "waveform": waveform_rtc,
+            "waveform": waveform_fixed,
             "label": torch.tensor(label, dtype=torch.long),
             "utt_id": self.utterance_ids[idx],
             "attack_label": self.attack_labels[idx],
