@@ -32,7 +32,6 @@ class SincConv(nn.Module):
         super(SincConv, self).__init__()
 
         if in_channels != 1:
-
             msg = (
                 "SincConv only support one input channel (here, in_channels = {%i})"
                 % (in_channels)
@@ -119,6 +118,7 @@ class ResidualBlock(nn.Module):
         )
 
         self.bn2 = nn.BatchNorm1d(num_features=nb_filts[1])
+
         self.conv2 = nn.Conv1d(
             in_channels=nb_filts[1],
             out_channels=nb_filts[1],
@@ -143,6 +143,7 @@ class ResidualBlock(nn.Module):
 
     def forward(self, x):
         identity = x
+
         if not self.first:
             out = self.bn1(x)
             out = self.lrelu(out)
@@ -170,7 +171,6 @@ class RawNet2(nn.Module):
         filts = [20, [20, 20], [20, 128], [128, 128]]
         first_conv = 1024  # no. of filter coefficients
         in_channels = 1
-        blocks = [2, 4]
         nb_fc_node = 1024
         gru_node = 1024
         nb_gru_layer = 3
@@ -185,10 +185,13 @@ class RawNet2(nn.Module):
 
         self.first_bn = nn.BatchNorm1d(num_features=filts[0])
         self.selu = nn.SELU(inplace=True)
+
         self.block0 = nn.Sequential(ResidualBlock(nb_filts=filts[1], first=True))
         self.block1 = nn.Sequential(ResidualBlock(nb_filts=filts[1]))
         self.block2 = nn.Sequential(ResidualBlock(nb_filts=filts[2]))
+
         filts[2][0] = filts[2][1]
+
         self.block3 = nn.Sequential(ResidualBlock(nb_filts=filts[2]))
         self.block4 = nn.Sequential(ResidualBlock(nb_filts=filts[2]))
         self.block5 = nn.Sequential(ResidualBlock(nb_filts=filts[2]))
@@ -230,7 +233,6 @@ class RawNet2(nn.Module):
         self.sig = nn.Sigmoid()
 
     def forward(self, x, is_test=False):
-
         nb_samp = x.shape[0]
         len_seq = x.shape[1]
         x = x.view(nb_samp, 1, len_seq)
