@@ -7,7 +7,7 @@ from torch.utils.data import Dataset
 from baselines.datasets.rtc_augment import RTCAudioSimulator
 
 
-class ASVspoof5Dataset(Dataset):
+class DatasetBase(Dataset):
     def __init__(self, manifest_path, base_data_dir, max_len=64000, is_training=True):
         """
         Step 1: Manifest Parsing & Verification Layout
@@ -54,7 +54,7 @@ class ASVspoof5Dataset(Dataset):
         print(f"--> Target Label 0: {self.labels[0]} (Type: {type(self.labels[0])})")
 
     def __len__(self):
-        return len(self.samples)
+        return len(self.file_paths)
 
     def _pad_or_truncate(self, waveform):
         """
@@ -73,29 +73,31 @@ class ASVspoof5Dataset(Dataset):
             return waveform_repeated[:, : self.max_len]
 
     def __getitem__(self, idx):
-        """
-        Loads individual audio file from disk and standardizes formatting shapes.
-        """
         file_path = self.file_paths[idx]
         label = self.labels[idx]
 
-        # 1. Load the raw audio data tensor
-        # (flac/wav loading is automatically routed via backend drivers)
+        # 1. Load audio
         waveform, sr = torchaudio.load(file_path)
 
-        # 2. Safety check: ensure mono signal tracking
+        # 2. Convert to mono FIRST 
         if waveform.shape[0] > 1:
-            waveform = torch.mean(waveform, dim=0, keepdim=True)
+            waveform = waveform.mean(dim=0, keepdim=True)
 
-        # 3. Enforce standardized size processing window
+        # 3. Remove channel ONLY if your models expect [T]
+        waveform = waveform.squeeze(0)
+
+        # 4. Pad / truncate
         waveform_fixed = self._pad_or_truncate(waveform)
 
-        # --- THE RTC TRANSFORMATION ZONE ---
+        # 5. Augmentation 
         waveform_rtc = self.rtc_simulator.process(
             waveform_fixed, is_training=self.is_training
         )
 
-        # Wrap things into a structured dictionary layout
+        # 6. FINAL SHAPE 
+        waveform_rtc = waveform_rtc.squeeze()
+        assert waveform_rtc.dim() == 1, f"Expected [T], got {waveform_rtc.shape}"
+
         return {
             "waveform": waveform_rtc,
             "label": torch.tensor(label, dtype=torch.long),
