@@ -53,3 +53,5 @@ cover/
 # IDE Specific (optional, depending on your setup)
 .vscode/
 .idea/
+
+.DS_Store
