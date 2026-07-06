@@ -53,3 +53,7 @@ cover/
 # IDE Specific (optional, depending on your setup)
 .vscode/
 .idea/
+
+.DS_Store
+data/asvspoof5/manifests/*.jsonl
+data/asvspoof5/audio/*
