@@ -1,11 +1,7 @@
 import numpy as np
 import soundfile as sf
-import torch
 from torch import Tensor
 from torch.utils.data import Dataset
-
-___author__ = "Hemlata Tak, Jee-weon Jung"
-__email__ = "tak@eurecom.fr, jeeweon.jung@navercorp.com"
 
 
 def genSpoof_list(dir_meta, is_train=False, is_eval=False):
@@ -95,5 +91,3 @@ class TestDataset(Dataset):
         X_pad = pad(X, self.cut)
         x_inp = Tensor(X_pad)
         return x_inp, key
-
-

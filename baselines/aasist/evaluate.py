@@ -1,10 +1,9 @@
 import argparse
 from pathlib import Path
 
-from baselines.common import compute_eer
-from baselines.rawnet2.model import RawNet2
-from baselines.rawnet2.trainer import forward_logits
-from baselines.rawnet2.utils import (
+from baselines.aasist import model as aasist_model
+from baselines.aasist.trainer import forward_logits
+from baselines.aasist.utils import (
     build_loader,
     collect_scores,
     get_device,
@@ -13,11 +12,19 @@ from baselines.rawnet2.utils import (
     set_seed,
     write_scores,
 )
+from baselines.common import compute_eer
+
+
+def build_model(config):
+    model_cls = getattr(aasist_model, "AASIST", getattr(aasist_model, "Model", None))
+    if model_cls is None:
+        raise AttributeError("Expected baselines.aasist.model to define AASIST or Model")
+    return model_cls(config["model_config"])
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Evaluate RawNet2 baseline")
-    parser.add_argument("--config", type=str, default="baselines/rawnet2/rawnet2.conf")
+    parser = argparse.ArgumentParser(description="Evaluate AASIST baseline")
+    parser.add_argument("--config", type=str, default="baselines/aasist/aasist.conf")
     parser.add_argument("--checkpoint", type=str, required=True)
     parser.add_argument("--split", type=str, default="eval", choices=["train", "dev", "eval"])
     parser.add_argument("--output", type=str, default=None)
@@ -33,9 +40,10 @@ def main():
         config.get("cudnn_deterministic_toggle", True),
         config.get("cudnn_benchmark_toggle", False),
     )
+    config["training"] = {**config.get("training", {}), "freq_aug": False}
 
     device = get_device(config)
-    model = RawNet2(device).to(device)
+    model = build_model(config).to(device)
     checkpoint = load_model_state(model, args.checkpoint, device)
     if checkpoint.get("epoch") is not None:
         print(f"Loaded checkpoint from epoch {checkpoint['epoch']}: {args.checkpoint}")

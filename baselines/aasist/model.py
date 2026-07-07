@@ -477,7 +477,7 @@ class ResidualBlock(nn.Module):
         return out
 
 
-class Model(nn.Module):
+class AASIST(nn.Module):
     def __init__(self, d_args):
         super().__init__()
 

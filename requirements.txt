@@ -1,6 +1,9 @@
 appnope==0.1.4
 asttokens==3.0.1
 audioread==3.1.0
+torch
+torchaudio
+tqdm
 certifi==2026.5.20
 cffi==2.0.0
 charset-normalizer==3.4.7

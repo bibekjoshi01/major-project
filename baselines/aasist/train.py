@@ -1,8 +1,8 @@
 import argparse
 
-from baselines.rawnet2.model import RawNet2
-from baselines.rawnet2.trainer import train_epoch, validate
-from baselines.rawnet2.utils import (
+from baselines.aasist import model as aasist_model
+from baselines.aasist.trainer import train_epoch, validate
+from baselines.aasist.utils import (
     build_criterion,
     build_loader,
     build_optimizer,
@@ -16,9 +16,16 @@ from baselines.rawnet2.utils import (
 )
 
 
+def build_model(config):
+    model_cls = getattr(aasist_model, "AASIST", getattr(aasist_model, "Model", None))
+    if model_cls is None:
+        raise AttributeError("Expected baselines.aasist.model to define AASIST or Model")
+    return model_cls(config["model_config"])
+
+
 def parse_args():
-    parser = argparse.ArgumentParser(description="Train RawNet2 baseline")
-    parser.add_argument("--config", type=str, default="baselines/rawnet2/rawnet2.conf")
+    parser = argparse.ArgumentParser(description="Train AASIST baseline")
+    parser.add_argument("--config", type=str, default="baselines/aasist/aasist.conf")
     parser.add_argument("--output_dir", type=str, default=None)
     return parser.parse_args()
 
@@ -38,7 +45,7 @@ def main():
     print(f"Device: {device}")
     print(f"Experiment: {exp_dir}")
 
-    model = RawNet2(device).to(device)
+    model = build_model(config).to(device)
     print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
 
     train_loader = build_loader(config, "train", is_training=True, seed=seed)
