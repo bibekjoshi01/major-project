@@ -11,7 +11,7 @@ from tensorboardX import SummaryWriter
 from baselines.rawnet2.model import RawNet2
 from baselines.rawnet2.trainer import train_epoch, validate
 from startup_config import set_random_seed
-from baselines.datasets.base_dataset import DatasetBase
+from datasets.base_dataset import DatasetBase
 
 log_format = "%(asctime)s %(message)s"
 logging.basicConfig(

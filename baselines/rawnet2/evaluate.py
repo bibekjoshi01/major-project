@@ -4,7 +4,7 @@ import os
 import torch
 from torch.utils.data import DataLoader
 
-from baselines.datasets.base_dataset import DatasetBase
+from datasets.base_dataset import DatasetBase
 from model import RawNet2
 from startup_config import set_random_seed
 

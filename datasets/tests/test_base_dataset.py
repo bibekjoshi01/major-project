@@ -1,4 +1,4 @@
-from baselines.datasets.base_dataset import DatasetBase
+from datasets.base_dataset import DatasetBase
 from torch.utils.data import DataLoader
 
 ds = DatasetBase(

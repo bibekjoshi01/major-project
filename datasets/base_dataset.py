@@ -4,7 +4,7 @@ import torch
 import torchaudio
 from torch.utils.data import Dataset
 
-from baselines.datasets.rtc_augment import RTCAudioSimulator
+from datasets.rtc_augment import RTCAudioSimulator
 
 
 class DatasetBase(Dataset):

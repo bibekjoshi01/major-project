@@ -39,15 +39,15 @@ import os
 import torch
 from torch.utils.data import Subset
 
-from baselines.datasets.base_dataset import DatasetBase
-from eval_utils.inference import (
+from datasets.base_dataset import DatasetBase
+from .inference import (
     build_dataloader,
     run_inference,
     write_score_file,
 )
-from eval_utils.metrics import evaluate_all
-from eval_utils.model_utils import load_model
-from eval_utils.report import plot_eer_curve, print_report
+from .metrics import evaluate_all
+from .model_utils import load_model
+from .metrics import plot_eer_curve, print_report
 
 
 def parse_args():
