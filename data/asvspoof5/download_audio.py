@@ -87,7 +87,6 @@ def download_archive(archive_name: str, destination: Path):
         repo_id=REPO_ID,
         repo_type="dataset",
         filename=archive_name,
-        show_progress=True,
     )
 
     print(f"Extracting -> {destination}")
