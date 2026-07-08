@@ -4,6 +4,7 @@ import tarfile
 from pathlib import Path, PurePosixPath
 
 from huggingface_hub import hf_hub_download
+from tqdm import tqdm
 
 REPO_ID = "jungjee/asvspoof5"
 
@@ -86,6 +87,7 @@ def download_archive(archive_name: str, destination: Path):
         repo_id=REPO_ID,
         repo_type="dataset",
         filename=archive_name,
+        show_progress=True,
     )
 
     print(f"Extracting -> {destination}")
@@ -93,9 +95,13 @@ def download_archive(archive_name: str, destination: Path):
     destination.mkdir(parents=True, exist_ok=True)
 
     with tarfile.open(archive_path, "r") as tar:
-        for member in tar.getmembers():
-            if member.name in {".", "./"}:
-                continue
+        members = [m for m in tar.getmembers() if m.name not in {".", "./"}]
+        for member in tqdm(
+            members,
+            desc=f"Extracting {archive_name}",
+            unit="file",
+            leave=False,
+        ):
             _extract_member(tar, member, destination)
 
     print(f"Finished {archive_name}")
@@ -128,7 +134,8 @@ def main():
     else:
         archives = ARCHIVES[args.split]
 
-    for archive in archives:
+    for index, archive in enumerate(archives, 1):
+        print(f"\n[{index}/{len(archives)}] Processing archive: {archive}")
         download_archive(archive, destination)
 
     print("\nAll downloads completed.")
