@@ -1,6 +1,7 @@
 import argparse
+import shutil
 import tarfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from huggingface_hub import hf_hub_download
 
@@ -35,6 +36,49 @@ ARCHIVES = {
 }
 
 
+def _extract_member(
+    tar: tarfile.TarFile, member: tarfile.TarInfo, destination: Path
+) -> None:
+    member_path = PurePosixPath(member.name)
+    parts = member_path.parts
+    if len(parts) > 1:
+        rel_path = Path(*parts[1:])
+    else:
+        rel_path = Path(parts[0])
+
+    if not rel_path.parts:
+        return
+
+    target_path = destination / rel_path
+
+    if member.isdir():
+        target_path.mkdir(parents=True, exist_ok=True)
+        return
+
+    if member.isreg():
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        if target_path.exists() or target_path.is_symlink():
+            if target_path.is_dir() and not target_path.is_symlink():
+                shutil.rmtree(target_path)
+            else:
+                target_path.unlink()
+
+        with tar.extractfile(member) as src, open(target_path, "wb") as dst:
+            if src is None:
+                raise RuntimeError(f"Unable to read archive member: {member.name}")
+            shutil.copyfileobj(src, dst)
+        return
+
+    if member.islnk() or member.issym():
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        if target_path.exists() or target_path.is_symlink():
+            if target_path.is_dir() and not target_path.is_symlink():
+                shutil.rmtree(target_path)
+            else:
+                target_path.unlink()
+        os.symlink(member.linkname, target_path) if False else None
+
+
 def download_archive(archive_name: str, destination: Path):
     print(f"\nDownloading {archive_name}")
 
@@ -49,7 +93,10 @@ def download_archive(archive_name: str, destination: Path):
     destination.mkdir(parents=True, exist_ok=True)
 
     with tarfile.open(archive_path, "r") as tar:
-        tar.extractall(destination)
+        for member in tar.getmembers():
+            if member.name in {".", "./"}:
+                continue
+            _extract_member(tar, member, destination)
 
     print(f"Finished {archive_name}")
 
