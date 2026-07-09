@@ -87,6 +87,8 @@ def build_dataset(config: dict, split: str, is_training: bool) -> DatasetBase:
         base_data_dir=data_config["database_path"],
         max_len=int(data_config.get("max_len", 64600)),
         is_training=is_training,
+        sample_rate=int(data_config.get("sample_rate", 16000)),
+        rtc_config=data_config.get("rtc"),
     )
 
 

@@ -1,24 +1,40 @@
 import os
 import json
+import random
+import warnings
 import torch
 import torchaudio
 from torch.utils.data import Dataset
 
+from datasets.channel_profiles import build_default_profiles
 from datasets.rtc_augment import RTCAudioSimulator
 
 
 class DatasetBase(Dataset):
-    def __init__(self, manifest_path, base_data_dir, max_len=16000, is_training=True):
+    def __init__(
+        self,
+        manifest_path,
+        base_data_dir,
+        max_len=16000,
+        is_training=True,
+        sample_rate=16000,
+        rtc_config=None,
+    ):
         """
         Step 1: Manifest Parsing & Verification Layout
 
         Args:
             manifest_path (str): Path to train.jsonl, dev.jsonl, or eval.jsonl
             base_data_dir (str): Path to the corresponding audio folder (e.g., data/asvspoof5/audio/train)
+            sample_rate (int): Target sample rate; files loaded at a different
+                native rate are resampled to this before augmentation/padding.
+            rtc_config (dict): Optional overrides for RTCAudioSimulator (enabled,
+                clean_prob, active_profiles, degrade_eval, ffmpeg_bin, ffmpeg_timeout).
         """
         self.base_data_dir = base_data_dir
         self.is_training = is_training
         self.max_len = max_len
+        self.target_sample_rate = sample_rate
 
         # Slicing keys for detailed RTC analysis down the road
         self.file_paths = []
@@ -29,7 +45,20 @@ class DatasetBase(Dataset):
         print(f"Reading manifest from: {manifest_path}...")
 
         # Instantiate our RTC module
-        self.rtc_simulator = RTCAudioSimulator()
+        rtc_config = rtc_config or {}
+        profiles = build_default_profiles(database_path=base_data_dir)
+        active_profiles = rtc_config.get("active_profiles")
+        if active_profiles:
+            profiles = {k: v for k, v in profiles.items() if k in active_profiles}
+        self.rtc_simulator = RTCAudioSimulator(
+            sample_rate=sample_rate,
+            profiles=profiles,
+            clean_prob=float(rtc_config.get("clean_prob", 0.18)),
+            enabled=bool(rtc_config.get("enabled", True)),
+            degrade_eval=bool(rtc_config.get("degrade_eval", False)),
+            ffmpeg_bin=rtc_config.get("ffmpeg_bin", "ffmpeg"),
+            ffmpeg_timeout=float(rtc_config.get("ffmpeg_timeout", 8.0)),
+        )
 
         # 1. Read jsonl lines safely
         with open(manifest_path, "r", encoding="utf-8") as f:
@@ -72,30 +101,54 @@ class DatasetBase(Dataset):
             waveform_repeated = waveform.repeat(1, repeats)
             return waveform_repeated[:, : self.max_len]
 
-    def __getitem__(self, idx, remove_channel=True):
+    def __getitem__(self, idx, remove_channel=True, _retries=5):
         file_path = self.file_paths[idx]
         label = self.labels[idx]
 
         # 1. Load audio
-        waveform, sr = torchaudio.load(file_path)
+        # Real-time Colab downloads can be interrupted mid-extraction, leaving
+        # some manifest entries without a matching file on disk. Skip those
+        # instead of killing an entire training run hours in.
+        try:
+            waveform, native_sr = torchaudio.load(file_path)
+        except Exception as e:
+            if _retries <= 0:
+                raise RuntimeError(
+                    f"Repeated audio load failures; last error on {file_path}: {e}"
+                ) from e
+            warnings.warn(f"Skipping unreadable/missing audio file: {file_path} ({e})")
+            fallback_idx = random.randrange(len(self.file_paths))
+            return self.__getitem__(
+                fallback_idx, remove_channel=remove_channel, _retries=_retries - 1
+            )
 
-        # 2. Augmentation
-        waveform_rtc = self.rtc_simulator.process(
-            waveform, is_training=self.is_training
+        # 2. Resample to the target rate if the file's native rate differs.
+        # Downstream RTC channel simulation needs a genuinely correct input
+        # rate for its codec/resample math, not a silently assumed one.
+        if native_sr != self.target_sample_rate:
+            waveform = torchaudio.functional.resample(
+                waveform, native_sr, self.target_sample_rate
+            )
+
+        # 3. Convert to mono BEFORE augmentation: real phones capture/encode
+        # mono, so a channel simulation should run on the same signal a real
+        # VoIP call would actually carry, not per-channel-then-averaged.
+        if waveform.shape[0] > 1:
+            waveform = waveform.mean(dim=0, keepdim=True)
+
+        # 4. RTC/VoIP channel augmentation
+        waveform_rtc, channel_profile = self.rtc_simulator.process(
+            waveform, sample_rate=self.target_sample_rate, is_training=self.is_training
         )
 
-        # 3. Convert to mono FIRST # TODO: Understand this
-        if waveform_rtc.shape[0] > 1:
-            waveform_rtc = waveform_rtc.mean(dim=0, keepdim=True)
-
-        # 4. Pad / truncate
+        # 5. Pad / truncate
         waveform_fixed = self._pad_or_truncate(waveform_rtc)
 
-        # 5. Remove channel ONLY if your models expect [T]
+        # 6. Remove channel ONLY if your models expect [T]
         if remove_channel:
             waveform_fixed = waveform_fixed.squeeze(0)
 
-        # 6. FINAL SHAPE
+        # 7. FINAL SHAPE
         waveform_fixed = waveform_fixed.squeeze()
         assert waveform_fixed.dim() == 1, f"Expected [T], got {waveform_fixed.shape}"
 
@@ -103,5 +156,14 @@ class DatasetBase(Dataset):
             "waveform": waveform_fixed,
             "label": torch.tensor(label, dtype=torch.long),
             "utt_id": self.utterance_ids[idx],
-            "attack_label": self.attack_labels[idx],
+            # Bonafide records store attack_label=None in the manifest; the
+            # default collate_fn crashes on a batch whose first item is None,
+            # which real training would hit as soon as a batch starts with a
+            # bonafide sample. Use a sentinel string instead.
+            "attack_label": (
+                self.attack_labels[idx]
+                if self.attack_labels[idx] is not None
+                else "bonafide"
+            ),
+            "channel_profile": channel_profile,
         }
