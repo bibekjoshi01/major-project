@@ -12,6 +12,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from datasets.base_dataset import DatasetBase
 
 
 def load_config(config_path: str) -> dict:
@@ -61,7 +62,9 @@ def get_device(config: dict) -> torch.device:
     return torch.device(requested)
 
 
-def make_experiment_dir(config: dict, config_path: str, output_dir: Optional[str]) -> Path:
+def make_experiment_dir(
+    config: dict, config_path: str, output_dir: Optional[str]
+) -> Path:
     train_config = config.get("training", {})
     root = Path(output_dir or config.get("output_dir", "baselines/runs"))
     exp_name = train_config.get("experiment_name")
@@ -77,7 +80,6 @@ def make_experiment_dir(config: dict, config_path: str, output_dir: Optional[str
 
 
 def build_dataset(config: dict, split: str, is_training: bool) -> DatasetBase:
-    from datasets.base_dataset import DatasetBase
 
     data_config = config["data"]
     manifest_name = data_config.get("manifests", {}).get(split, f"{split}.jsonl")
@@ -170,7 +172,9 @@ def build_criterion(config: dict, device: torch.device) -> nn.Module:
     return nn.CrossEntropyLoss(weight=weights)
 
 
-def compute_eer(scores: np.ndarray, labels: np.ndarray, positive_label: int = 1) -> float:
+def compute_eer(
+    scores: np.ndarray, labels: np.ndarray, positive_label: int = 1
+) -> float:
     target_scores = scores[labels == positive_label]
     nontarget_scores = scores[labels != positive_label]
     if len(target_scores) == 0 or len(nontarget_scores) == 0:
@@ -320,7 +324,9 @@ def save_checkpoint(
     )
 
 
-def load_model_state(model: torch.nn.Module, checkpoint_path: str, device: torch.device) -> dict:
+def load_model_state(
+    model: torch.nn.Module, checkpoint_path: str, device: torch.device
+) -> dict:
     checkpoint = torch.load(checkpoint_path, map_location=device)
     state_dict = checkpoint.get("model_state_dict", checkpoint)
     model.load_state_dict(state_dict)
