@@ -62,6 +62,18 @@ class DatasetBase(Dataset):
             ffmpeg_timeout=float(rtc_config.get("ffmpeg_timeout", 8.0)),
         )
 
+        # Build a set of files actually on disk in one directory walk. A
+        # per-line os.path.isfile() would cost one stat() per manifest row
+        # (hundreds of thousands for the full protocol) even though a
+        # partial Colab download only has a small fraction of those files;
+        # scanning once and doing in-memory set lookups instead turns that
+        # into O(files on disk) + O(manifest rows) with no syscalls in the loop.
+        audio_root = os.path.join(self.base_data_dir, "audio")
+        existing_files = set()
+        for dirpath, _, filenames in os.walk(audio_root):
+            for fname in filenames:
+                existing_files.add(os.path.normpath(os.path.join(dirpath, fname)))
+
         # 1. Read jsonl lines safely
         skipped_missing = 0
         with open(manifest_path, "r", encoding="utf-8") as f:
@@ -76,11 +88,11 @@ class DatasetBase(Dataset):
                     )
 
                     # Real-time Colab downloads can be interrupted mid-extraction,
-                    # leaving manifest entries (e.g. eval) without a matching file
-                    # under audio/train or audio/dev on disk. Only index entries
-                    # whose audio is actually present instead of loading the full
+                    # leaving manifest entries without a matching file under
+                    # audio/train or audio/dev on disk. Only index entries whose
+                    # audio is actually present instead of loading the full
                     # jsonl and discovering gaps later.
-                    if not os.path.isfile(full_path):
+                    if full_path not in existing_files:
                         skipped_missing += 1
                         continue
 
