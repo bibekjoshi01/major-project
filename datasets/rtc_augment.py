@@ -6,6 +6,7 @@ ffmpeg subprocess round-trips) and a Gilbert-Elliott bursty packet-loss model
 with fade-based concealment, approximating what audio looks like after a real
 VoIP call (WhatsApp/Signal-style) or a compressed/forwarded voice note.
 """
+
 from __future__ import annotations
 
 import random
@@ -54,22 +55,63 @@ def _run_ffmpeg(args: list, input_bytes: bytes, timeout: float) -> bytes:
     return proc.stdout
 
 
-def _encode_args(ffmpeg_bin: str, codec: str, in_sr: int, op_sr: int, bitrate_kbps: Optional[float]) -> list:
+def _encode_args(
+    ffmpeg_bin: str, codec: str, in_sr: int, op_sr: int, bitrate_kbps: Optional[float]
+) -> list:
     base = [
-        ffmpeg_bin, "-hide_banner", "-loglevel", "error",
-        "-f", "f32le", "-ar", str(in_sr), "-ac", "1", "-i", "pipe:0",
-        "-ar", str(op_sr), "-ac", "1", "-threads", "1",
+        ffmpeg_bin,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "f32le",
+        "-ar",
+        str(in_sr),
+        "-ac",
+        "1",
+        "-i",
+        "pipe:0",
+        "-ar",
+        str(op_sr),
+        "-ac",
+        "1",
+        "-threads",
+        "1",
     ]
     if codec == "opus":
         return base + [
-            "-c:a", "libopus", "-b:a", f"{bitrate_kbps:.0f}k",
-            "-application", "voip", "-frame_duration", "20",
-            "-f", "opus", "pipe:1",
+            "-c:a",
+            "libopus",
+            "-b:a",
+            f"{bitrate_kbps:.0f}k",
+            "-application",
+            "voip",
+            "-frame_duration",
+            "20",
+            "-f",
+            "opus",
+            "pipe:1",
         ]
     if codec == "mp3":
-        return base + ["-c:a", "libmp3lame", "-b:a", f"{bitrate_kbps:.0f}k", "-f", "mp3", "pipe:1"]
+        return base + [
+            "-c:a",
+            "libmp3lame",
+            "-b:a",
+            f"{bitrate_kbps:.0f}k",
+            "-f",
+            "mp3",
+            "pipe:1",
+        ]
     if codec == "aac":
-        return base + ["-c:a", "aac", "-b:a", f"{bitrate_kbps:.0f}k", "-f", "adts", "pipe:1"]
+        return base + [
+            "-c:a",
+            "aac",
+            "-b:a",
+            f"{bitrate_kbps:.0f}k",
+            "-f",
+            "adts",
+            "pipe:1",
+        ]
     if codec == "g711_alaw":
         return base + ["-c:a", "pcm_alaw", "-f", "alaw", "pipe:1"]
     raise ValueError(f"Unsupported codec: {codec}")
@@ -88,10 +130,22 @@ def _decode_args(ffmpeg_bin: str, codec: str, op_sr: int, out_sr: int) -> list:
     else:
         raise ValueError(f"Unsupported codec: {codec}")
     return [
-        ffmpeg_bin, "-hide_banner", "-loglevel", "error",
-        *in_fmt, "-i", "pipe:0",
-        "-ar", str(out_sr), "-ac", "1", "-threads", "1",
-        "-f", "f32le", "pipe:1",
+        ffmpeg_bin,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        *in_fmt,
+        "-i",
+        "pipe:0",
+        "-ar",
+        str(out_sr),
+        "-ac",
+        "1",
+        "-threads",
+        "1",
+        "-f",
+        "f32le",
+        "pipe:1",
     ]
 
 
@@ -162,7 +216,13 @@ class GilbertElliottLossSimulator:
     """2-state Markov bursty packet-loss model with repeat+fade concealment,
     operating at ~20ms packet granularity (WebRTC/Opus's real frame size)."""
 
-    def __init__(self, params, sample_rate: int, decay_factor: float = 0.6, crossfade_ms: float = 2.0):
+    def __init__(
+        self,
+        params,
+        sample_rate: int,
+        decay_factor: float = 0.6,
+        crossfade_ms: float = 2.0,
+    ):
         self.params = params
         self.sample_rate = sample_rate
         self.decay_factor = decay_factor
@@ -198,13 +258,15 @@ class GilbertElliottLossSimulator:
             end = min(start + packet_len, total_len)
             seg_len = end - start
 
-            loss_prob = self.params.loss_prob_bad if state_bad else self.params.loss_prob_good
+            loss_prob = (
+                self.params.loss_prob_bad if state_bad else self.params.loss_prob_good
+            )
             lost = random.random() < loss_prob
 
             if lost:
                 consecutive_losses += 1
                 if last_good_packet is not None:
-                    gain = self.decay_factor ** consecutive_losses
+                    gain = self.decay_factor**consecutive_losses
                     concealment = last_good_packet
                     if concealment.shape[-1] < seg_len:
                         reps = (seg_len // concealment.shape[-1]) + 1
@@ -229,7 +291,9 @@ class GilbertElliottLossSimulator:
         return out
 
 
-def _agc_normalize(waveform: torch.Tensor, target_rms_dbfs: float = -20.0, max_gain_db: float = 12.0) -> torch.Tensor:
+def _agc_normalize(
+    waveform: torch.Tensor, target_rms_dbfs: float = -20.0, max_gain_db: float = 12.0
+) -> torch.Tensor:
     rms = waveform.pow(2).mean().sqrt().clamp_min(1e-8)
     target_rms = 10 ** (target_rms_dbfs / 20.0)
     max_gain = 10 ** (max_gain_db / 20.0)
@@ -237,7 +301,9 @@ def _agc_normalize(waveform: torch.Tensor, target_rms_dbfs: float = -20.0, max_g
     return (waveform * gain).clamp(-1.0, 1.0)
 
 
-def _highpass_dc_removal(waveform: torch.Tensor, sample_rate: int, cutoff_hz: float = 80.0) -> torch.Tensor:
+def _highpass_dc_removal(
+    waveform: torch.Tensor, sample_rate: int, cutoff_hz: float = 80.0
+) -> torch.Tensor:
     try:
         return torchaudio.functional.highpass_biquad(waveform, sample_rate, cutoff_hz)
     except Exception:
@@ -272,17 +338,27 @@ class RTCAudioSimulator:
         # baselines/common.py's seed_worker/build_loader wiring.
 
     def process(
-        self, waveform: torch.Tensor, sample_rate: Optional[int] = None, is_training: bool = True
+        self,
+        waveform: torch.Tensor,
+        sample_rate: Optional[int] = None,
+        is_training: bool = True,
     ) -> Tuple[torch.Tensor, str]:
         sr = sample_rate or self.sample_rate
 
-        if not self.enabled or not self.profile_names or (not is_training and not self.degrade_eval):
+        if (
+            not self.enabled
+            or not self.profile_names
+            or (not is_training and not self.degrade_eval)
+        ):
             return waveform, "clean"
+
         if random.random() < self.clean_prob:
             return waveform, "clean"
 
         profile = self.profiles[random.choice(self.profile_names)]
-        out, _ = ffmpeg_codec_round_trip(waveform, sr, profile, self.ffmpeg_bin, self.ffmpeg_timeout)
+        out, _ = ffmpeg_codec_round_trip(
+            waveform, sr, profile, self.ffmpeg_bin, self.ffmpeg_timeout
+        )
 
         if profile.loss_model is not None:
             out = GilbertElliottLossSimulator(profile.loss_model, sr).apply(out)

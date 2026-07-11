@@ -48,8 +48,10 @@ class DatasetBase(Dataset):
         rtc_config = rtc_config or {}
         profiles = build_default_profiles(database_path=base_data_dir)
         active_profiles = rtc_config.get("active_profiles")
+
         if active_profiles:
             profiles = {k: v for k, v in profiles.items() if k in active_profiles}
+
         self.rtc_simulator = RTCAudioSimulator(
             sample_rate=sample_rate,
             profiles=profiles,
@@ -61,6 +63,7 @@ class DatasetBase(Dataset):
         )
 
         # 1. Read jsonl lines safely
+        skipped_missing = 0
         with open(manifest_path, "r", encoding="utf-8") as f:
             for line in f:
                 if line.strip():
@@ -71,12 +74,27 @@ class DatasetBase(Dataset):
                     full_path = os.path.normpath(
                         os.path.join(self.base_data_dir, item["audio_path"])
                     )
+
+                    # Real-time Colab downloads can be interrupted mid-extraction,
+                    # leaving manifest entries (e.g. eval) without a matching file
+                    # under audio/train or audio/dev on disk. Only index entries
+                    # whose audio is actually present instead of loading the full
+                    # jsonl and discovering gaps later.
+                    if not os.path.isfile(full_path):
+                        skipped_missing += 1
+                        continue
+
                     self.file_paths.append(full_path)
 
                     # 2. Extract safe items
                     self.labels.append(int(item["label"]))
                     self.utterance_ids.append(item["utt_id"])
                     self.attack_labels.append(item["attack_label"])
+
+        if skipped_missing:
+            print(
+                f"Skipped {skipped_missing} manifest entries with no audio file on disk."
+            )
 
         print(f"Successfully processed {len(self.file_paths)} track records.")
         print(f"--> Target Path 0: {self.file_paths[0]}")
