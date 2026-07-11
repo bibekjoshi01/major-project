@@ -108,6 +108,15 @@ class DatasetBase(Dataset):
                 f"Skipped {skipped_missing} manifest entries with no audio file on disk."
             )
 
+        if not self.file_paths:
+            raise RuntimeError(
+                f"No audio files found under '{audio_root}' matching any entry in "
+                f"{manifest_path}. Run download_audio.py for this split before "
+                f"training/evaluating on it, e.g.: "
+                f"python data/asvspoof5/download_audio.py --split "
+                f"{os.path.basename(manifest_path).split('.')[0]}"
+            )
+
         print(f"Successfully processed {len(self.file_paths)} track records.")
         print(f"--> Target Path 0: {self.file_paths[0]}")
         print(f"--> Target Label 0: {self.labels[0]} (Type: {type(self.labels[0])})")
