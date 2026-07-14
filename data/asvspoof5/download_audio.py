@@ -1,14 +1,19 @@
 import argparse
+import os
 import shutil
 import tarfile
 from pathlib import Path, PurePosixPath
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from huggingface_hub import hf_hub_download
 from tqdm import tqdm
 
+os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = (
+    "1"  # make sure this is set before any hf_hub_download call
+)
+
 REPO_ID = "jungjee/asvspoof5"
 
-# Available archives on HF
 ARCHIVES = {
     "train": [
         "flac_T_aa.tar",
@@ -17,11 +22,7 @@ ARCHIVES = {
         "flac_T_ad.tar",
         "flac_T_ae.tar",
     ],
-    "dev": [
-        "flac_D_aa.tar",
-        "flac_D_ab.tar",
-        "flac_D_ac.tar",
-    ],
+    "dev": ["flac_D_aa.tar", "flac_D_ab.tar", "flac_D_ac.tar"],
     "eval": [
         "flac_E_aa.tar",
         "flac_E_ab.tar",
@@ -42,11 +43,7 @@ def _extract_member(
 ) -> None:
     member_path = PurePosixPath(member.name)
     parts = member_path.parts
-    if len(parts) > 1:
-        rel_path = Path(*parts[1:])
-    else:
-        rel_path = Path(parts[0])
-
+    rel_path = Path(*parts[1:]) if len(parts) > 1 else Path(parts[0])
     if not rel_path.parts:
         return
 
@@ -63,86 +60,71 @@ def _extract_member(
                 shutil.rmtree(target_path)
             else:
                 target_path.unlink()
-
         with tar.extractfile(member) as src, open(target_path, "wb") as dst:
             if src is None:
                 raise RuntimeError(f"Unable to read archive member: {member.name}")
             shutil.copyfileobj(src, dst)
-        return
-
-    if member.islnk() or member.issym():
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        if target_path.exists() or target_path.is_symlink():
-            if target_path.is_dir() and not target_path.is_symlink():
-                shutil.rmtree(target_path)
-            else:
-                target_path.unlink()
-        os.symlink(member.linkname, target_path) if False else None
 
 
 def download_archive(archive_name: str, destination: Path):
-    print(f"\nDownloading {archive_name}")
-
+    # Download only — extraction happens separately so extraction of one
+    # archive isn't blocked waiting on another archive's download.
     archive_path = hf_hub_download(
-        repo_id=REPO_ID,
-        repo_type="dataset",
-        filename=archive_name,
+        repo_id=REPO_ID, repo_type="dataset", filename=archive_name
     )
+    return archive_name, archive_path
 
-    print(f"Extracting -> {destination}")
 
+def extract_archive(archive_name: str, archive_path: str, destination: Path):
     destination.mkdir(parents=True, exist_ok=True)
-
     with tarfile.open(archive_path, "r") as tar:
         members = [m for m in tar.getmembers() if m.name not in {".", "./"}]
         for member in tqdm(
-            members,
-            desc=f"Extracting {archive_name}",
-            unit="file",
-            leave=False,
+            members, desc=f"Extracting {archive_name}", unit="file", leave=False
         ):
             _extract_member(tar, member, destination)
 
-    print(f"Finished {archive_name}")
+
+def download_and_extract(archive_name: str, destination: Path):
+    name, path = download_archive(archive_name, destination)
+    print(f"Downloaded {name}, extracting...")
+    extract_archive(name, path, destination)
+    print(f"Finished {name}")
 
 
 def main():
     parser = argparse.ArgumentParser()
-
+    parser.add_argument("--split", required=True, choices=["train", "dev", "eval"])
+    parser.add_argument("--archive", default=None)
     parser.add_argument(
-        "--split",
-        required=True,
-        choices=["train", "dev", "eval"],
-        help="Dataset split",
+        "--workers", type=int, default=4, help="Parallel download workers"
     )
-
-    parser.add_argument(
-        "--archive",
-        default=None,
-        help="Specific archive name (optional)",
-    )
-
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parent
-    audio_root = root / "audio"
-    destination = audio_root / args.split
+    destination = root / "audio" / args.split
+    archives = [args.archive] if args.archive else ARCHIVES[args.split]
 
-    if args.archive:
-        archives = [args.archive]
-    else:
-        archives = ARCHIVES[args.split]
+    print(
+        f"Downloading {len(archives)} archive(s) with {args.workers} parallel workers"
+    )
 
-    for index, archive in enumerate(archives, 1):
-        print(f"\n[{index}/{len(archives)}] Processing archive: {archive}")
-        download_archive(archive, destination)
+    with ThreadPoolExecutor(max_workers=args.workers) as executor:
+        futures = {
+            executor.submit(download_and_extract, a, destination): a for a in archives
+        }
+        for future in as_completed(futures):
+            archive = futures[future]
+            try:
+                future.result()
+            except Exception as e:
+                print(f"Failed on {archive}: {e}")
 
     print("\nAll downloads completed.")
 
 
 if __name__ == "__main__":
     main()
-
 
 """
 ## Running commands
