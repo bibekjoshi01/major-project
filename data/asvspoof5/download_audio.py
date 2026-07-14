@@ -8,9 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from huggingface_hub import hf_hub_download
 from tqdm import tqdm
 
-os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = (
-    "1"  # make sure this is set before any hf_hub_download call
-)
+os.environ["HF_XET_HIGH_PERFORMANCE"] = "1"
 
 REPO_ID = "jungjee/asvspoof5"
 
@@ -67,7 +65,7 @@ def _extract_member(
 
 
 def download_archive(archive_name: str, destination: Path):
-    # Download only — extraction happens separately so extraction of one
+    # Download only -- extraction happens separately so extraction of one
     # archive isn't blocked waiting on another archive's download.
     archive_path = hf_hub_download(
         repo_id=REPO_ID, repo_type="dataset", filename=archive_name
@@ -97,7 +95,7 @@ def main():
     parser.add_argument("--split", required=True, choices=["train", "dev", "eval"])
     parser.add_argument("--archive", default=None)
     parser.add_argument(
-        "--workers", type=int, default=4, help="Parallel download workers"
+        "--workers", type=int, default=3, help="Parallel download workers"
     )
     args = parser.parse_args()
 
@@ -141,4 +139,7 @@ if __name__ == "__main__":
 4. Download only one archive
     python data/asvspoof5/download_audio.py --split eval --archive flac_E_aa.tar
     python data/asvspoof5/download_audio.py --split train --archive flac_T_ab.tar
+
+5. Control parallel worker count (default 3)
+    python data/asvspoof5/download_audio.py --split train --workers 4
 """
